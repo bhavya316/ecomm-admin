@@ -19,7 +19,7 @@ const Login = () => {
     setLoading(false);
     
     if (result.success) {
-      navigate('/vendors');
+      navigate('/dashboard');
     } else {
       setError(result.message);
     }

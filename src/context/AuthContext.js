@@ -1,9 +1,11 @@
 import React, { createContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import { ADMIN_API_URL } from '../utils/api';
 
 export const AuthContext = createContext();
 
-const API_URL = 'https://broadcast.rivoratech.com/api/v1/admin';
+const API_URL = ADMIN_API_URL;
+
 
 export const AuthProvider = ({ children }) => {
   const [admin, setAdmin] = useState(null);

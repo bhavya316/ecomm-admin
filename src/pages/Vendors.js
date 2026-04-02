@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
+import AdminLayout from '../components/AdminLayout';
+import { ADMIN_API_URL, toAssetUrl } from '../utils/api';
 
-const API_URL = 'https://broadcast.rivoratech.com/api/v1/admin';
+const API_URL = ADMIN_API_URL;
 
 const COLORS = {
   primary: '#cc0001',
@@ -20,31 +22,35 @@ const DOCUMENT_FIELDS = [
   { key: 'pan', label: 'PAN Card' },
   { key: 'gst', label: 'GST Certificate' },
   { key: 'fssai', label: 'FSSAI License' },
+  { key: 'pharmacyLicense', label: 'Pharmacy License' },
   { key: 'bankProof', label: 'Bank Proof' },
   { key: 'profile', label: 'Profile Photo' },
 ];
+
+const FILTER_LABELS = {
+  pending: 'Pending Approvals',
+  approved: 'Approved Vendors',
+  rejected: 'Rejected Vendors',
+  suspended: 'Suspended Vendors',
+};
+
+const isImageDocument = (src = '') =>
+  typeof src === 'string' && (src.startsWith('data:image') || /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(src));
+
+const isPdfDocument = (src = '') =>
+  typeof src === 'string' && (src.startsWith('data:application/pdf') || /\.pdf(\?|$)/i.test(src));
 
 const Vendors = () => {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [filter, setFilter] = useState('pending');
-  const [imageModal, setImageModal] = useState(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectFields, setRejectFields] = useState([]);
   const [rejectReason, setRejectReason] = useState('');
-  const { logout, token } = useContext(AuthContext);
+  const { token } = useContext(AuthContext);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      axios.defaults.headers.common['Accept'] = 'application/json';
-      fetchVendors();
-    }
-  }, [filter, token]);
-
-  const fetchVendors = async () => {
+  const fetchVendors = useCallback(async () => {
     try {
       const endpoint = filter === 'pending' 
         ? `${API_URL}/vendors/pending` 
@@ -56,7 +62,15 @@ const Vendors = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    axios.defaults.headers.common['Accept'] = 'application/json';
+    fetchVendors();
+  }, [fetchVendors, token]);
 
   const fetchVendorDetails = async (id) => {
     try {
@@ -75,6 +89,17 @@ const Vendors = () => {
     } catch (error) {
       console.error('Error approving vendor:', error.response?.data || error.message);
       alert(error.response?.data?.message || 'Error approving vendor');
+    }
+  };
+
+  const suspendVendor = async (id) => {
+    try {
+      await axios.patch(`${API_URL}/vendors/${id}/suspend`);
+      setSelectedVendor(null);
+      fetchVendors();
+    } catch (error) {
+      console.error('Error suspending vendor:', error.response?.data || error.message);
+      alert(error.response?.data?.message || 'Error suspending vendor');
     }
   };
 
@@ -114,6 +139,7 @@ const Vendors = () => {
       pending: { bg: '#fff5f5', color: '#cc0001', border: '#ffe5e5' },
       approved: { bg: '#e8f5e9', color: '#2e7d32', border: '#c8e6c9' },
       rejected: { bg: '#ffebee', color: '#c62828', border: '#ffcdd2' },
+      suspended: { bg: '#fff4e5', color: '#b26a00', border: '#ffe0b2' },
     };
     const c = colors[status] || colors.pending;
     return (
@@ -131,85 +157,99 @@ const Vendors = () => {
     );
   };
 
-  const renderImage = (src, label) => {
+  const openDocument = (src) => {
+    if (!src) return;
+    const url = toAssetUrl(src);
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const renderDocument = (src, label) => {
     if (!src || typeof src !== 'string') return null;
-    
-    const isBase64 = src.startsWith('data:image') || src.startsWith('http') || src.length > 200;
-    const srcToUse = isBase64 ? src : null;
-    
-    if (!srcToUse) return null;
+
+    const imageDoc = isImageDocument(src);
+    const pdfDoc = isPdfDocument(src);
+    const url = toAssetUrl(src);
+
+    if (!imageDoc && !pdfDoc && !url) return null;
     
     return (
       <div style={styles.imageItem}>
         <span style={styles.imageLabel}>{label}</span>
-        <div 
+        <div
           style={styles.imageThumbnail}
-          onClick={() => setImageModal({ src: srcToUse, label })}
+          onClick={() => openDocument(src)}
         >
-          <img 
-            src={srcToUse} 
-            alt={label}
-            style={styles.thumbnailImg}
-          />
+          {imageDoc ? (
+            <img
+              src={url}
+              alt={label}
+              style={styles.thumbnailImg}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+              }}
+            />
+          ) : null}
+          <div style={{ ...styles.documentCard, display: imageDoc ? 'none' : 'flex' }}>
+            <span style={styles.documentIcon}>{pdfDoc ? 'PDF' : 'IMG'}</span>
+            <span style={styles.documentHint}>Click to view</span>
+          </div>
         </div>
       </div>
     );
   };
 
+  const renderPharmacyLicenses = () => {
+    const licenses = Array.isArray(selectedVendor?.pharmacyLicenses)
+      ? selectedVendor.pharmacyLicenses.filter(Boolean)
+      : [];
+
+    return licenses.map((license, index) => renderDocument(license, `Pharmacy License ${index + 1}`));
+  };
+
+  const getDisplayStatus = (vendor) => vendor?.userStatus === 'suspended' ? 'suspended' : vendor?.status;
+
   if (loading) {
     return (
-      <div style={{ ...styles.container, justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ minHeight: '60vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <div style={{ color: COLORS.textSecondary }}>Loading...</div>
       </div>
     );
   }
 
   return (
-    <div style={styles.container}>
-      {/* Sidebar */}
-      <aside style={styles.sidebar}>
-        <div style={styles.sidebarHeader}>
-          <div style={styles.logoIcon}>EC</div>
-          <span style={styles.logoText}>Admin</span>
-        </div>
-        
-        <nav style={styles.nav}>
-          <button 
-            style={filter === 'pending' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem}
-            onClick={() => setFilter('pending')}
-          >
-            Pending Approvals
-            {vendors.length > 0 && filter === 'pending' && (
-              <span style={styles.badge}>{vendors.length}</span>
-            )}
-          </button>
-          <button 
-            style={filter === 'approved' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem}
-            onClick={() => setFilter('approved')}
-          >
-            Approved Vendors
-          </button>
-          <button 
-            style={filter === 'rejected' ? { ...styles.navItem, ...styles.navItemActive } : styles.navItem}
-            onClick={() => setFilter('rejected')}
-          >
-            Rejected Vendors
-          </button>
-        </nav>
-
-        <button style={styles.logoutBtn} onClick={logout}>
-          Logout
-        </button>
-      </aside>
-
-      {/* Main Content */}
-      <main style={styles.main}>
+    <AdminLayout title={FILTER_LABELS[filter] || 'Vendors'} subtitle={`${vendors.length} vendor${vendors.length !== 1 ? 's' : ''}`}>
         <header style={styles.header}>
           <div>
-            <h1 style={styles.headerTitle}>
-              {filter === 'pending' ? 'Pending Approvals' : filter === 'approved' ? 'Approved Vendors' : 'Rejected Vendors'}
-            </h1>
-            <p style={styles.headerSubtitle}>{vendors.length} vendor{vendors.length !== 1 ? 's' : ''}</p>
+            <div style={styles.filterTabs}>
+              <button 
+                style={filter === 'pending' ? { ...styles.filterTab, ...styles.filterTabActive } : styles.filterTab}
+                onClick={() => setFilter('pending')}
+              >
+                Pending Approvals
+                {vendors.length > 0 && filter === 'pending' && <span style={styles.badge}>{vendors.length}</span>}
+              </button>
+              <button 
+                style={filter === 'approved' ? { ...styles.filterTab, ...styles.filterTabActive } : styles.filterTab}
+                onClick={() => setFilter('approved')}
+              >
+                Approved Vendors
+              </button>
+              <button 
+                style={filter === 'rejected' ? { ...styles.filterTab, ...styles.filterTabActive } : styles.filterTab}
+                onClick={() => setFilter('rejected')}
+              >
+                Rejected Vendors
+              </button>
+              <button 
+                style={filter === 'suspended' ? { ...styles.filterTab, ...styles.filterTabActive } : styles.filterTab}
+                onClick={() => setFilter('suspended')}
+              >
+                Suspended Vendors
+              </button>
+            </div>
           </div>
         </header>
 
@@ -229,7 +269,7 @@ const Vendors = () => {
               >
                 <div style={styles.cardHeader}>
                   <span style={styles.vendorType}>{vendor.vendorType}</span>
-                  {getStatusBadge(vendor.status)}
+                  {getStatusBadge(getDisplayStatus(vendor))}
                 </div>
                 <h3 style={styles.storeName}>{vendor.storeName || 'Unnamed Store'}</h3>
                 <p style={styles.vendorName}>{vendor.fullName}</p>
@@ -241,7 +281,7 @@ const Vendors = () => {
             ))}
           </div>
         )}
-      </main>
+      
 
       {/* Detail Modal */}
       {selectedVendor && !showRejectModal && (
@@ -270,7 +310,7 @@ const Vendors = () => {
                   </div>
                   <div style={styles.infoItem}>
                     <span style={styles.infoLabel}>Status</span>
-                    {getStatusBadge(selectedVendor.status)}
+                    {getStatusBadge(getDisplayStatus(selectedVendor))}
                   </div>
                 </div>
               </div>
@@ -300,12 +340,13 @@ const Vendors = () => {
               <div style={styles.section}>
                 <h4 style={styles.sectionTitle}>Documents</h4>
                 <div style={styles.imagesGrid}>
-                  {renderImage(selectedVendor.profilePictureUrl, 'Profile Photo')}
-                  {renderImage(selectedVendor.aadharImageUrl, 'Aadhar Card')}
-                  {renderImage(selectedVendor.panImageUrl, 'PAN Card')}
-                  {renderImage(selectedVendor.gstCertificate, 'GST Certificate')}
-                  {renderImage(selectedVendor.fssaiLicense, 'FSSAI License')}
-                  {renderImage(selectedVendor.bankProofUrl, 'Bank Proof')}
+                  {renderDocument(selectedVendor.profilePictureUrl, 'Profile Photo')}
+                  {renderDocument(selectedVendor.aadharImageUrl, 'Aadhar Card')}
+                  {renderDocument(selectedVendor.panImageUrl, 'PAN Card')}
+                  {renderDocument(selectedVendor.gstCertificate, 'GST Certificate')}
+                  {renderDocument(selectedVendor.fssaiLicense, 'FSSAI License')}
+                  {renderDocument(selectedVendor.bankProofUrl, 'Bank Proof')}
+                  {renderPharmacyLicenses()}
                 </div>
                 <div style={styles.infoGrid}>
                   <div style={styles.infoItem}>
@@ -341,35 +382,6 @@ const Vendors = () => {
                 <div style={styles.section}>
                   <h4 style={{ ...styles.sectionTitle, color: COLORS.error }}>Rejection Details</h4>
                   <div style={styles.rejectionBox}>
-                    <p style={styles.rejectionReason}><strong>Reason:</strong> {selectedVendor.rejectionReason || 'No reason provided'}</p>
-                    {selectedVendor.rejectionFields && selectedVendor.rejectionFields.length > 0 && (
-                      <div style={styles.rejectionFields}>
-                        <p><strong>Faulty Documents:</strong></p>
-                        <div style={styles.fieldTags}>
-                          {(() => {
-                            try {
-                              const fields = typeof selectedVendor.rejectionFields === 'string' 
-                                ? JSON.parse(selectedVendor.rejectionFields) 
-                                : selectedVendor.rejectionFields;
-                              return Array.isArray(fields) ? fields.map(field => (
-                                <span key={field} style={styles.fieldTag}>{field}</span>
-                              )) : null;
-                            } catch (e) {
-                              return null;
-                            }
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              </div>
-
-              {selectedVendor.status === 'rejected' && (
-                <div style={styles.section}>
-                  <h4 style={{ ...styles.sectionTitle, color: COLORS.error }}>Rejection Details</h4>
-                  <div style={styles.rejectionBox}>
                     <p style={styles.rejectionReason}>
                       <strong>Reason:</strong> {selectedVendor.rejectionReason || 'No reason provided'}
                     </p>
@@ -399,16 +411,33 @@ const Vendors = () => {
                 </div>
               )}
 
-              {selectedVendor.status === 'pending' && (
-              <div style={styles.modalActions}>
-                <button style={styles.approveBtn} onClick={() => approveVendor(selectedVendor.id)}>
-                  Approve
-                </button>
-                <button style={styles.rejectBtn} onClick={openRejectModal}>
-                  Reject
-                </button>
-              </div>
-            )}
+              {getDisplayStatus(selectedVendor) === 'pending' && (
+                <div style={styles.modalActions}>
+                  <button style={styles.approveBtn} onClick={() => approveVendor(selectedVendor.id)}>
+                    Approve
+                  </button>
+                  <button style={styles.rejectBtn} onClick={openRejectModal}>
+                    Reject
+                  </button>
+                </div>
+              )}
+
+              {getDisplayStatus(selectedVendor) === 'approved' && (
+                <div style={styles.modalActions}>
+                  <button style={styles.suspendBtn} onClick={() => suspendVendor(selectedVendor.id)}>
+                    Suspend Vendor
+                  </button>
+                </div>
+              )}
+
+              {getDisplayStatus(selectedVendor) === 'suspended' && (
+                <div style={styles.modalActions}>
+                  <button style={styles.approveBtn} onClick={() => approveVendor(selectedVendor.id)}>
+                    Approve Vendor
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -463,91 +492,37 @@ const Vendors = () => {
         </div>
       )}
 
-      {/* Image Modal */}
-      {imageModal && (
-        <div style={styles.imageModalOverlay} onClick={() => setImageModal(null)}>
-          <div style={styles.imageModalContent} onClick={e => e.stopPropagation()}>
-            <button style={styles.imageModalClose} onClick={() => setImageModal(null)}>✕</button>
-            <h3 style={styles.imageModalTitle}>{imageModal.label}</h3>
-            <img 
-              src={imageModal.src} 
-              alt={imageModal.label}
-              style={styles.imageModalImg}
-            />
-          </div>
-        </div>
-      )}
-
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
       `}</style>
-    </div>
+    </AdminLayout>
   );
 };
 
 const styles = {
-  container: {
+  filterTabs: {
     display: 'flex',
-    minHeight: '100vh',
-    background: COLORS.background,
-  },
-  sidebar: {
-    width: '240px',
-    background: COLORS.surface,
-    borderRight: `1px solid ${COLORS.divider}`,
-    display: 'flex',
-    flexDirection: 'column',
-    position: 'fixed',
-    height: '100vh',
-  },
-  sidebarHeader: {
-    padding: '20px',
-    display: 'flex',
-    alignItems: 'center',
     gap: '10px',
-    borderBottom: `1px solid ${COLORS.divider}`,
+    flexWrap: 'wrap',
   },
-  logoIcon: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
-    background: COLORS.primary,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#fff',
-    fontSize: '14px',
-    fontWeight: '700',
-  },
-  logoText: {
-    color: COLORS.textPrimary,
-    fontSize: '18px',
-    fontWeight: '600',
-  },
-  nav: {
-    flex: 1,
-    padding: '16px 12px',
-  },
-  navItem: {
+  filterTab: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: '100%',
     padding: '12px 14px',
-    borderRadius: '8px',
-    border: 'none',
-    background: 'transparent',
+    borderRadius: '999px',
+    border: `1px solid ${COLORS.divider}`,
+    background: COLORS.surface,
     color: COLORS.textSecondary,
     fontSize: '14px',
-    fontWeight: '500',
+    fontWeight: '600',
     cursor: 'pointer',
-    textAlign: 'left',
-    marginBottom: '4px',
   },
-  navItemActive: {
+  filterTabActive: {
     background: '#fff5f5',
     color: COLORS.primary,
+    border: '1px solid #ffd7d7',
   },
   badge: {
     background: COLORS.primary,
@@ -556,34 +531,8 @@ const styles = {
     padding: '2px 8px',
     borderRadius: '10px',
   },
-  logoutBtn: {
-    margin: '16px',
-    padding: '12px',
-    borderRadius: '8px',
-    border: 'none',
-    background: '#fafafa',
-    color: COLORS.textSecondary,
-    fontSize: '14px',
-    fontWeight: '500',
-    cursor: 'pointer',
-  },
-  main: {
-    flex: 1,
-    marginLeft: '240px',
-    padding: '24px 32px',
-  },
   header: {
     marginBottom: '24px',
-  },
-  headerTitle: {
-    color: COLORS.textPrimary,
-    fontSize: '24px',
-    fontWeight: '600',
-    marginBottom: '4px',
-  },
-  headerSubtitle: {
-    color: COLORS.textSecondary,
-    fontSize: '14px',
   },
   grid: {
     display: 'grid',
@@ -747,6 +696,28 @@ const styles = {
     height: '100%',
     objectFit: 'cover',
   },
+  documentCard: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    background: '#fff7f7',
+    color: COLORS.primary,
+    textAlign: 'center',
+    padding: '12px',
+  },
+  documentIcon: {
+    fontSize: '24px',
+    fontWeight: '700',
+    letterSpacing: '1px',
+  },
+  documentHint: {
+    fontSize: '12px',
+    color: COLORS.textSecondary,
+  },
   rejectionBox: {
     background: '#fff5f5',
     border: '1px solid #ffe5e5',
@@ -797,6 +768,17 @@ const styles = {
     borderRadius: '8px',
     border: 'none',
     background: COLORS.error,
+    color: '#fff',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  suspendBtn: {
+    flex: 1,
+    padding: '12px',
+    borderRadius: '8px',
+    border: 'none',
+    background: '#ff9800',
     color: '#fff',
     fontSize: '14px',
     fontWeight: '600',
@@ -868,52 +850,6 @@ const styles = {
     fontSize: '14px',
     fontFamily: 'inherit',
     resize: 'vertical',
-  },
-  imageModalOverlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'rgba(0,0,0,0.85)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2000,
-  },
-  imageModalContent: {
-    background: COLORS.surface,
-    borderRadius: '12px',
-    padding: '20px',
-    maxWidth: '90vw',
-    maxHeight: '90vh',
-    position: 'relative',
-  },
-  imageModalClose: {
-    position: 'absolute',
-    top: '10px',
-    right: '10px',
-    background: 'rgba(0,0,0,0.5)',
-    border: 'none',
-    color: '#fff',
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    cursor: 'pointer',
-    fontSize: '16px',
-  },
-  imageModalTitle: {
-    color: COLORS.textPrimary,
-    fontSize: '16px',
-    fontWeight: '600',
-    marginBottom: '16px',
-    textAlign: 'center',
-  },
-  imageModalImg: {
-    maxWidth: '100%',
-    maxHeight: '80vh',
-    objectFit: 'contain',
-    borderRadius: '8px',
   },
 };
 
