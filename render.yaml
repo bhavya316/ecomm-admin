@@ -1,7 +1,7 @@
 services:
-  - type: static
+  - type: web
     buildCommand: npm run build
-    publishDir: build
+    startCommand: node server.js
     envVars:
       - key: NODE_VERSION
         value: "18"
