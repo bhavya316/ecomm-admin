@@ -1,6 +1,7 @@
 services:
   - type: web
-    buildCommand: npm run build
+    name: ecomm-admin
+    buildCommand: npm install && npm run build
     startCommand: node server.js
     envVars:
       - key: NODE_VERSION
