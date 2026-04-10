@@ -805,7 +805,6 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    border: `1px solid ${COLORS.divider}`,
     borderLeft: 'none',
     transition: 'all 0.2s ease',
     zIndex: 1,

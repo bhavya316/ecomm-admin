@@ -83,6 +83,7 @@ const Referrals = () => {
     if (!token) return;
     axios.defaults.headers.common.Authorization = `Bearer ${token}`;
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, currentPage, searchTerm]);
 
   const fetchData = () => {

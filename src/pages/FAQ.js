@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '../components/AdminLayout';
 import axios from 'axios';
 import ReactQuill from 'react-quill-new';
@@ -36,6 +36,7 @@ const FAQ = () => {
 
   useEffect(() => {
     fetchFaqItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const fetchFaqItems = async () => {

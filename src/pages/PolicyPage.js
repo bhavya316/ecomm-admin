@@ -34,6 +34,7 @@ const PolicyPage = ({ policyType, title, subtitle }) => {
 
   useEffect(() => {
     fetchPolicy();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [policyType]);
 
   const fetchPolicy = async () => {
