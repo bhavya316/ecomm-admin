@@ -12,6 +12,10 @@ const ORDER_STATUSES = [
   { value: 'handover_for_delivery', label: 'Handed Over for Delivery' },
   { value: 'out_for_delivery', label: 'Out for Delivery' },
   { value: 'delivered', label: 'Delivered' },
+  { value: 'return_requested', label: 'Return Requested' },
+  { value: 'return_approved', label: 'Return Approved' },
+  { value: 'return_rejected', label: 'Return Rejected' },
+  { value: 'return_refunded', label: 'Return Refunded' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
 
@@ -248,6 +252,10 @@ const getStatusStyle = (status) => {
     handover_for_delivery: { background: '#f3e5f5', color: '#7b1fa2' },
     out_for_delivery: { background: '#fff8e1', color: '#f9a825' },
     delivered: { background: '#e8f5e9', color: '#1b5e20' },
+    return_requested: { background: '#fff3e0', color: '#ef6c00' },
+    return_approved: { background: '#e3f2fd', color: '#1565c0' },
+    return_rejected: { background: '#ffebee', color: '#c62828' },
+    return_refunded: { background: '#eceff1', color: '#546e7a' },
     cancelled: { background: '#ffebee', color: '#c62828' },
   };
   const colors = statusColors[status] || { background: '#f5f5f5', color: '#616161' };

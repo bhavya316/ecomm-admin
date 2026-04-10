@@ -10,6 +10,10 @@ const NAV_ITEMS = [
   { to: '/categories', label: 'Categories' },
   { to: '/rewards', label: 'Rewards' },
   { to: '/referrals', label: 'Referrals' },
+  { to: '/faq', label: 'FAQ' },
+  { to: '/terms', label: 'Terms' },
+  { to: '/privacy', label: 'Privacy' },
+  { to: '/refund-policy', label: 'Refund Policy' },
 ];
 
 const COLORS = {
