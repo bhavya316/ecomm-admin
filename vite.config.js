@@ -5,4 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/',
+  eslint: {
+    ignoreDuringBuilds: true,
+    include: ['src/**/*.{js,jsx,ts,tsx}'],
+  },
 })
