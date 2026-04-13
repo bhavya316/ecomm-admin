@@ -5,7 +5,7 @@ import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { API_BASE_URL } from '../utils/api';
 
-const API_URL = process.env.REACT_APP_API_URL || `${API_BASE_URL}/api/v1`;
+const API_URL = `${API_BASE_URL}/api/v1` || 'http://localhost:5000/api/v1'; // Fallback for local development
 
 const modules = {
   toolbar: [
