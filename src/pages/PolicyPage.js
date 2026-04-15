@@ -5,7 +5,7 @@ import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { API_BASE_URL } from '../utils/api';
 
-const API_URL = `${API_BASE_URL}/api/v1` || 'http://localhost:5000/api/v1'; // Fallback for local development
+const API_URL = `${API_BASE_URL}/api/v1` || 'http://localhost:5000/api/v1';
 
 const modules = {
   toolbar: [
@@ -26,8 +26,7 @@ const formats = [
 
 const PolicyPage = ({ policyType, title, subtitle }) => {
   const [activeTab, setActiveTab] = useState('user');
-  const [userContent, setUserContent] = useState('');
-  const [vendorContent, setVendorContent] = useState('');
+  const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -35,21 +34,27 @@ const PolicyPage = ({ policyType, title, subtitle }) => {
   useEffect(() => {
     fetchPolicy();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [policyType]);
+  }, [policyType, activeTab]);
 
   const fetchPolicy = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('adminToken');
       const response = await axios.get(`${API_URL}/admin/policies/${policyType}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        params: { audience: activeTab }
       });
       if (response.data.data) {
-        setUserContent(response.data.data.userContent || '');
-        setVendorContent(response.data.data.vendorContent || '');
+        setContent(response.data.data.content || '');
+      } else {
+        setContent('');
       }
     } catch (error) {
-      console.error('Error fetching policy:', error);
+      if (error.response?.status === 404) {
+        setContent('');
+      } else {
+        console.error('Error fetching policy:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -60,11 +65,30 @@ const PolicyPage = ({ policyType, title, subtitle }) => {
       setSaving(true);
       setMessage(null);
       const token = localStorage.getItem('adminToken');
-      await axios.patch(`${API_URL}/admin/policies/${policyType}`, 
-        { userContent, vendorContent },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setMessage({ type: 'success', text: 'Policy saved successfully!' });
+      
+      const payload = {
+        type: policyType,
+        audience: activeTab,
+        content: content
+      };
+      
+      try {
+        await axios.patch(`${API_URL}/admin/policies/${policyType}`, 
+          { audience: activeTab, content },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setMessage({ type: 'success', text: 'Policy saved successfully!' });
+      } catch (patchError) {
+        if (patchError.response?.status === 404) {
+          await axios.post(`${API_URL}/admin/policies`,
+            payload,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          setMessage({ type: 'success', text: 'Policy created successfully!' });
+        } else {
+          throw patchError;
+        }
+      }
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       console.error('Error saving policy:', error);
@@ -81,9 +105,6 @@ const PolicyPage = ({ policyType, title, subtitle }) => {
       </AdminLayout>
     );
   }
-
-  const currentContent = activeTab === 'user' ? userContent : vendorContent;
-  const setCurrentContent = activeTab === 'user' ? setUserContent : setVendorContent;
 
   return (
     <AdminLayout title={title} subtitle={subtitle}>
@@ -122,8 +143,8 @@ const PolicyPage = ({ policyType, title, subtitle }) => {
           <div style={styles.quillWrapper}>
             <ReactQuill
               theme="snow"
-              value={currentContent}
-              onChange={setCurrentContent}
+              value={content}
+              onChange={setContent}
               modules={modules}
               formats={formats}
               style={styles.quill}
